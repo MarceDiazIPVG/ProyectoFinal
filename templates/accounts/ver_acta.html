@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Detalle del Acta{% endblock %}
+
+{% block content %}
+<style>
+  body{background:#0f172a;color:#f3f4f6;font-family:'Poppins',sans-serif;}
+  .wrap{max-width:900px;margin:40px auto;padding:20px;}
+  .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:28px;box-shadow:0 6px 16px rgba(0,0,0,.4);}
+  h1{color:#a78bfa;font-size:1.6rem;margin-bottom:20px;text-align:center;}
+  .row{display:flex;justify-content:space-between;margin-bottom:12px;}
+  .label{color:#94a3b8;font-weight:500;}
+  .valor{color:#f9fafb;}
+  .badge{padding:4px 8px;border-radius:8px;font-size:.8rem;font-weight:600;}
+  .badge.pendiente{background:#facc15;color:#111827;}
+  .badge.revision{background:#38bdf8;color:#111827;}
+  .badge.aprobada{background:#22c55e;color:#fff;}
+  .badge.rechazada{background:#ef4444;color:#fff;}
+  .separador{border-color:#1f2937;margin:16px 0;}
+  .bloque{margin-bottom:16px;}
+  .bloque p{margin:4px 0;}
+  .bloque strong{color:#a78bfa;}
+  .btn{background:#a78bfa;color:#111827;padding:8px 14px;border:none;border-radius:8px;font-weight:600;cursor:pointer;text-decoration:none;}
+  .btn:hover{background:#8b5cf6;color:#fff;}
+  .btn-volver{background:#334155;color:#f1f5f9;}
+  .btn-volver:hover{background:#475569;}
+
+  /* === NOMINAS === */
+  .nominas{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;}
+  .nomina-card{background:#0b1120;border:1px solid #1f2937;border-radius:10px;padding:16px;}
+  .nomina-card h3{color:#a78bfa;margin-bottom:8px;font-size:1rem;text-align:center;}
+  ul{list-style:none;margin:0;padding:0;}
+  ul li{padding:4px 0;border-bottom:1px solid #1f2937;font-size:.9rem;}
+  ul li:last-child{border-bottom:none;}
+  .badge-num{background:#1f2937;border-radius:999px;padding:2px 8px;margin-right:6px;font-size:.85rem;}
+</style>
+
+  <div class="wrap">
+  <div class="card">
+    <h1>📄 Detalle del Acta</h1>
+
+    <!-- 🔹 Información general -->
+    <div class="bloque">
+      <p><strong>ID Acta:</strong> {{ acta.0 }}</p>
+      <p><strong>Fecha del encuentro:</strong> {{ acta.3|date:"d/m/Y" }}</p>
+      <p><strong>Cancha:</strong> {{ acta.5|default:"Sin asignar" }}</p>
+    </div>
+
+    <hr class="separador">
+
+    <!-- 🔹 Información del partido -->
+    <div class="bloque">
+      <p><strong>Club Local:</strong> {{ acta.1 }}</p>
+      <p><strong>Club Visitante:</strong> {{ acta.2 }}</p>
+      <p><strong>Resultado:</strong> <span style="font-weight:600;font-size:1.1rem;">{{ acta.6 }} - {{ acta.7 }}</span></p>
+    </div>
+
+    <hr class="separador">
+
+    <!-- 🔹 Incidentes -->
+    <div class="bloque">
+      <p><strong>Incidentes / Observaciones:</strong></p>
+      <p style="margin-top:6px;white-space:pre-wrap;">{{ acta.8|default:"Sin incidentes reportados" }}</p>
+    </div>
+
+    <hr class="separador">
+
+    <!-- 🔹 Estado -->
+    <div class="bloque">
+      <p><strong>Estado actual:</strong>
+        <span class="badge 
+          {% if acta.9 == 'Pendiente' %}pendiente
+          {% elif acta.9 == 'En revisión' %}revision
+          {% elif acta.9 == 'Aprobada' %}aprobada
+          {% elif acta.9 == 'Rechazada' %}rechazada
+          {% endif %}">
+          {{ acta.9 }}
+        </span>
+      </p>
+      {% if acta.10 %}
+      <p style="color:#94a3b8;font-size:.9rem;margin-top:6px;"><em>📋 {{ acta.10 }}</em></p>
+      {% endif %}
+    </div>
+
+    <!-- 🔹 Nóminas -->
+    {% if nomina_local or nomina_visita %}
+    <hr class="separador">
+    <div class="nominas">
+      <div class="nomina-card">
+        <h3>🏠 {{ acta.1 }}</h3>
+        {% if nomina_local %}
+          <ul>
+            {% for j in nomina_local %}
+              <li><span class="badge-num">#{{ j.camiseta }}</span>{{ j.nombre }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p style="color:#94a3b8;text-align:center;">Sin jugadores cargados.</p>
+        {% endif %}
+      </div>
+
+      <div class="nomina-card">
+        <h3>🛫 {{ acta.2 }}</h3>
+        {% if nomina_visita %}
+          <ul>
+            {% for j in nomina_visita %}
+              <li><span class="badge-num">#{{ j.camiseta }}</span>{{ j.nombre }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p style="color:#94a3b8;text-align:center;">Sin jugadores cargados.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div style="text-align:center;margin-top:30px;">
+      <a href="{% url 'actas_arbitro' %}" class="btn btn-volver">← Volver</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

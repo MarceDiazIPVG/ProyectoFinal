@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}Noticias del Torneo{% endblock %}
+{% block content %}
+<style>
+  .wrap { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+  h2 { color:#a78bfa; margin-bottom: 8px; text-align:center; }
+  p.sub { color:#94a3b8; text-align:center; margin:4px 0 16px; }
+
+  .card { background:#1f2937; border-radius:12px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.3); margin-bottom:16px; }
+  .btn{ background:#a78bfa; color:#111827; border:none; padding:9px 14px; border-radius:8px; cursor:pointer; font-weight:700; }
+  .btn:hover{ background:#8b5cf6; color:#fff; }
+  .btn-ghost{ background:#111827; border:1px solid #a78bfa; color:#a78bfa; }
+  .btn-ghost:hover{ background:#0c1220; border-color:#8b5cf6; color:#fff; }
+
+  label { display:block; color:#cbd5e1; font-size:14px; margin-bottom:6px; }
+  input[type="text"], input[type="number"], textarea {
+    width:100%; height:38px; background:#111827; border:1px solid #374151; border-radius:8px;
+    color:#f3f4f6; padding:8px 10px; box-sizing:border-box;
+  }
+  textarea { height:120px; resize:vertical; }
+  .msg { text-align:center; margin:8px 0; }
+  .msg.ok  { color:#34d399; }
+  .msg.err { color:#f87171; }
+  .news-item { border-bottom:1px solid #374151; padding:10px 0; }
+  .news-title { color:#e5e7eb; font-weight:700; }
+  .news-date { color:#94a3b8; font-size:12px; }
+</style>
+
+<div class="wrap">
+  <h2>Noticias del Torneo</h2>
+  <p class="sub">Publica y administra comunicados oficiales de la liga/torneo.</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="msg {% if message.tags == 'success' %}ok{% else %}err{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card">
+    <h3 style="color:#e5e7eb; margin-top:0;">Publicar noticia</h3>
+    <form method="post" action="{% url 'noticias_admin' %}" style="display:grid; gap:10px;">
+      {% csrf_token %}
+      <div>
+        <label>Título</label>
+        <input type="text" name="titulo" placeholder="Ej: Programación de la Fecha 7" required>
+      </div>
+      <div>
+        <label>Descripción</label>
+        <textarea name="descripcion" placeholder="Detalle de la noticia, links, recordatorios, etc."></textarea>
+      </div>
+      <div>
+        <label>ID Partido (opcional)</label>
+        <input type="number" name="id_partido" placeholder="Ej: 15">
+      </div>
+      <div style="text-align:right;">
+        <button class="btn" type="submit">Publicar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="color:#e5e7eb; margin-top:0;">Noticias publicadas</h3>
+    {% if noticias and noticias|length > 0 %}
+      <div>
+        {% for n in noticias %}
+          {# n = (id_anuncio, titulo, fecha_publicacion, descripcion, id_partido) #}
+          <div class="news-item">
+            <div class="news-title">{{ n.1 }}</div>
+            <div class="news-date">
+              Publicado: {{ n.2|date:"Y-m-d H:i" }}
+              {% if n.4 %} • Partido #{{ n.4 }}{% endif %}
+            </div>
+            <div style="color:#cbd5e1; margin-top:6px; white-space:pre-wrap;">{{ n.3 }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="sub">Aún no hay noticias publicadas.</p>
+    {% endif %}
+  </div>
+
+  <div style="text-align:center; margin-top:10px;">
+    <a href="{% url 'dashboard' %}" class="btn-ghost">← Volver al Panel</a>
+  </div>
+</div>
+{% endblock %}

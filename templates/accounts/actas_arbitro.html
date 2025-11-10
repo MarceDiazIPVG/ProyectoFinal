@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% block title %}Mis Actas{% endblock %}
+
+{% block content %}
+<style>
+  body{background:#0f172a;color:#f3f4f6;font-family:'Poppins',sans-serif;}
+  .wrap{max-width:1100px;margin:40px auto;padding:0 16px;}
+  .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px 24px;}
+  h1{margin-bottom:20px;color:#a78bfa;font-size:1.6rem;display:flex;align-items:center;gap:8px;}
+
+  /* === GRID DE ACTAS === */
+  .actas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .acta-card {
+    background:#1e293b;
+    border:1px solid #334155;
+    border-radius:12px;
+    padding:18px;
+    box-shadow:0 4px 10px rgba(0,0,0,.25);
+    transition:all .2s ease;
+  }
+  .acta-card:hover {
+    transform:translateY(-4px);
+    box-shadow:0 6px 16px rgba(0,0,0,.4);
+  }
+
+  .acta-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .acta-header h3 {
+    color:#a78bfa;
+    font-size:1.1rem;
+    margin:0;
+  }
+  .fecha { color:#94a3b8;font-size:.85rem; }
+
+  .resultado {
+    font-size:1.2rem;
+    font-weight:600;
+    color:#f9fafb;
+    text-align:center;
+    margin:8px 0;
+  }
+  .clubes {
+    text-align:center;
+    color:#e2e8f0;
+    font-size:.95rem;
+  }
+  .incidentes {
+    color:#cbd5e1;
+    font-size:.9rem;
+    margin-top:8px;
+    min-height:38px;
+  }
+
+  /* === BADGES DE ESTADO === */
+  .badge {padding:4px 8px;border-radius:8px;font-size:.8rem;font-weight:600;}
+  .badge.pendiente{background:#facc15;color:#111827;}
+  .badge.revision{background:#38bdf8;color:#111827;}
+  .badge.aprobada{background:#22c55e;color:#fff;}
+  .badge.rechazada{background:#ef4444;color:#fff;}
+
+  .estado { margin-top:8px;text-align:center; }
+
+  .acciones {
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    margin-top:14px;
+  }
+  .btn {
+    background:#a78bfa;
+    color:#111827;
+    padding:6px 12px;
+    border:none;
+    border-radius:6px;
+    font-weight:600;
+    font-size:.85rem;
+    cursor:pointer;
+    text-decoration:none;
+    transition:.2s ease;
+  }
+  .btn:hover{background:#8b5cf6;color:#fff;}
+  .btn-ver{background:#334155;color:#f1f5f9;}
+  .btn-ver:hover{background:#475569;}
+  .btn-editar{background:#ef4444;color:#fff;}
+  .btn-editar:hover{background:#b91c1c;}
+</style>
+
+<div class="wrap">
+  <div class="card">
+    <h1>🧾 Mis Actas</h1>
+
+    {% if actas %}
+    <div class="actas-grid">
+      {% for a in actas %}
+      <div class="acta-card">
+        <div class="acta-header">
+          <h3>Acta Nº {{ a.0 }}</h3>
+          <span class="fecha">{{ a.3|date:"d/m/Y" }}</span>
+        </div>
+
+        <div class="clubes">{{ a.1 }} vs {{ a.2 }}</div>
+        <div class="resultado">{{ a.4 }} - {{ a.5 }}</div>
+        <div class="incidentes">{{ a.6|default:"Sin incidentes" }}</div>
+
+        <div class="estado">
+          <span class="badge 
+            {% if a.7 == 'Pendiente' %}pendiente
+            {% elif a.7 == 'En revisión' %}revision
+            {% elif a.7 == 'Aprobada' %}aprobada
+            {% elif a.7 == 'Rechazada' %}rechazada
+            {% endif %}">
+            {{ a.7 }}
+          </span>
+        </div>
+
+        <div class="acciones">
+          {% if a.7 == "Rechazada" %}
+            <a href="{% url 'redactar_acta' a.0 %}" class="btn btn-editar">✏️ Editar</a>
+          {% else %}
+            <a href="{% url 'ver_acta' a.0 %}" class="btn btn-ver">👁️ Ver</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- PAGINACIÓN -->
+    {% if page_obj.has_other_pages %}
+    <div style="text-align:center;margin-top:30px;">
+      {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-ver">← Anterior</a>
+      {% endif %}
+      <span style="margin:0 12px;color:#94a3b8;">
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+      </span>
+      {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}" class="btn btn-ver">Siguiente →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+      <p style="color:#94a3b8;text-align:center;">No hay actas registradas.</p>
+    {% endif %}
+
+    <div style="text-align:center;margin-top:24px;">
+      <a href="{% url 'perfil_arbitro' %}" class="btn">← Volver al Panel</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

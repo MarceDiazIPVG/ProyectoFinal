@@ -1,0 +1,563 @@
+{% extends 'base.html' %}
+{% block title %}Panel del Turno{% endblock %}
+{% block content %}
+<style>
+  .wrap { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+  h2 { color:#a78bfa; margin-bottom: 8px; text-align:center; }
+  p.sub { color:#94a3b8; text-align:center; margin:4px 0 16px; }
+
+  .msg { text-align:center; margin:8px 0; }
+  .msg.ok  { color:#34d399; }
+  .msg.err { color:#f87171; }
+
+  .card { background:#1f2937; border-radius:12px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.3); margin-bottom:16px; }
+  .card h3 { color:#e5e7eb; margin:0 0 10px; font-size:18px; }
+
+  label { display:block; color:#cbd5e1; font-size:14px; margin-bottom:6px; }
+  input[type="text"], select, input[type="number"] {
+    width:100%; height:38px; background:#111827; border:1px solid #374151; border-radius:8px;
+    color:#f3f4f6; padding:0 10px; box-sizing:border-box;
+  }
+  input[readonly] { opacity:.85; }
+
+  .btn{ background:#a78bfa; color:#111827; border:none; padding:9px 14px; border-radius:8px; cursor:pointer; font-weight:700; }
+  .btn:hover{ background:#8b5cf6; color:#fff; }
+  .btn-ghost{ background:#111827; border:1px solid #a78bfa; color:#a78bfa; }
+  .btn-ghost:hover{ background:#0c1220; border-color:#8b5cf6; color:#fff; }
+  .btn-danger{ background:#ef4444; color:#fff; }
+  .btn-danger:hover{ background:#dc2626; }
+
+  table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+  th, td { padding:10px 12px; border-bottom:1px solid #374151; text-align:left; vertical-align:middle; }
+  th { color:#a78bfa; }
+
+  .badge { display:inline-block; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:700; }
+  .b-ok { background:#34d399; color:#062e22; }
+  .b-info { background:#60a5fa; color:#0a2540; }
+
+  .two-col { display:grid; grid-template-columns: 1fr; gap:16px; }
+  @media (min-width: 900px){ .two-col { grid-template-columns: 1fr 1fr; } }
+</style>
+
+<div class="wrap">
+  <h2>Panel del Turno</h2>
+  <p class="sub">Verificación de jugadores por RUT, validación de edad por serie y pertenencia a club.</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="msg {% if message.tags == 'success' %}ok{% else %}err{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Selección de Partido -->
+  <div class="card">
+    <h3>Seleccionar Partido</h3>
+    <form method="get" action="{% url 'panel_turno' %}" style="display:flex; flex-wrap:wrap; gap:8px;">
+      <select name="partido_id" id="id_partido" style="flex:1;">
+        <option value="">— Selecciona —</option>
+        {% for p in partidos_turno %}
+          <option value="{{ p.0 }}" {% if partido_id and p.0 == partido_id %}selected{% endif %}>
+            #{{ p.0 }} — {{ p.1|date:"Y-m-d" }} {{ p.2|default:"—" }} — {{ p.3 }} vs {{ p.4 }} {% if p.7 %}— [{{ p.7 }}]{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="btn" type="submit">Cargar</button>
+      <a class="btn-ghost" href="{% url 'panel_turno' %}">Limpiar</a>
+    </form>
+
+    {% if partido_id %}
+      <p class="sub" style="margin-top:10px;">
+        <b>Partido #{{ partido_id }}</b> — <b>{{ club_local_txt|default:"—" }}</b> vs <b>{{ club_visita_txt|default:"—" }}</b>
+        {% if partido_serie_nombre %} — Serie: <b>{{ partido_serie_nombre }}</b>{% endif %}
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Ingreso manual a nómina -->
+  {% if not nomina_enviada %}
+  <div class="card">
+    <h3>Agregar Jugador a la Nómina</h3>
+    <form method="post" style="display:flex; flex-wrap:wrap; gap:12px;">
+      {% csrf_token %}
+      <input type="hidden" name="id_partido" value="{{ partido_id|default:'' }}">
+      <div style="flex:1;">
+        <label>RUT</label>
+        <input type="text" name="rut" id="rut" placeholder="12345678" inputmode="numeric" pattern="[0-9]{6,8}" required>
+      </div>
+      <div style="width:80px;">
+        <label>DV</label>
+        <input type="text" name="dv" id="dv" placeholder="K/0-9" maxlength="1" pattern="[0-9Kk]" required>
+      </div>
+      <div style="width:100px;">
+        <label>Camiseta</label>
+        <input type="text" name="camiseta" id="camiseta" placeholder="N°" inputmode="numeric" pattern="[0-9]{1,3}" required>
+      </div>
+      <div style="flex:1;">
+        <label>Serie</label>
+        <select name="id_serie" id="id_serie" required>
+          <option value="">— Selecciona —</option>
+          {% for s in series %}
+            <option value="{{ s.0 }}" {% if partido_id_serie and s.0 == partido_id_serie %}selected{% endif %}>{{ s.1 }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="align-self:flex-end;">
+        <button type="submit" name="agregar" value="1" class="btn">Agregar</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- Checklist de Presencia (planteles por club) -->
+  <!-- Checklist de Presencia (planteles por club) -->
+{% if partido_id %}
+<div class="card">
+  <h3>Checklist de Presencia</h3>
+  <p class="sub">“Seleccionar” inserta/actualiza en la nómina del partido con el número de camiseta ingresado.</p>
+
+  <div class="two-col">
+    <!-- Plantel Local -->
+    <div>
+      <h4 style="margin-top:0;color:#e5e7eb;">
+        🏠 Local: <b>{{ club_local_txt|default:"—" }}</b>
+        <span class="badge b-info">{{ plantel_local|length }} en plantel</span>
+      </h4>
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="id_partido" value="{{ partido_id }}">
+        <input type="hidden" name="side" value="local">
+        <input type="hidden" name="plantel_add_masivo" value="1">
+
+        <div style="overflow:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>N° Camiseta</th>
+                <th>Nombre</th>
+                <th>RUT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in plantel_local %}
+              <tr>
+                <td>
+                  <input type="number" name="camiseta_{{ r.0 }}" placeholder="N°" min="0" max="999" style="width:80px;">
+                  <input type="hidden" name="rut_{{ r.0 }}" value="{{ r.0 }}">
+                  <input type="hidden" name="dv_{{ r.0 }}" value="{{ r.1 }}">
+                </td>
+                <td>{{ r.2 }}</td>
+                <td>{{ r.0 }}-{{ r.1 }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="text-align:center; margin-top:10px;">
+          <button class="btn" type="submit">Agregar jugadores </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Plantel Visita -->
+    <div>
+      <h4 style="margin-top:0;color:#e5e7eb;">
+        🛫 Visita: <b>{{ club_visita_txt|default:"—" }}</b>
+        <span class="badge b-info">{{ plantel_visita|length }} en plantel</span>
+      </h4>
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="id_partido" value="{{ partido_id }}">
+        <input type="hidden" name="side" value="visita">
+        <input type="hidden" name="plantel_add_masivo" value="1">
+
+        <div style="overflow:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>N° Camiseta</th>
+                <th>Nombre</th>
+                <th>RUT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in plantel_visita %}
+              <tr>
+                <td>
+                  <input type="number" name="camiseta_{{ r.0 }}" placeholder="N°" min="0" max="999" style="width:80px;">
+                  <input type="hidden" name="rut_{{ r.0 }}" value="{{ r.0 }}">
+                  <input type="hidden" name="dv_{{ r.0 }}" value="{{ r.1 }}">
+                </td>
+                <td>{{ r.2 }}</td>
+                <td>{{ r.0 }}-{{ r.1 }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="text-align:center; margin-top:10px;">
+          <button class="btn" type="submit">Agregar jugadores</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+
+<!-- Registro de Cambios -->
+{% if partido_id %}
+<div class="card">
+  <h3>Registrar Cambios</h3>
+  <p class="sub">⚽ Los cambios se registran cumpliendo la normativa oficial: máximo 5 por equipo.</p>
+
+  <form method="post" style="display:flex; flex-wrap:wrap; gap:12px;">
+    {% csrf_token %}
+    <input type="hidden" name="id_partido" value="{{ partido_id }}">
+    <input type="hidden" name="registrar_cambio" value="1">
+
+    <div style="width:180px;">
+      <label>Equipo</label>
+      <select name="side" required {% if nomina_enviada %}disabled{% endif %}>
+        <option value="">— Selecciona —</option>
+        <option value="local">Local — {{ club_local_txt }}</option>
+        <option value="visita">Visita — {{ club_visita_txt }}</option>
+      </select>
+    </div>
+
+    <!-- SALE -->
+    <div style="flex:1; min-width:220px;">
+      <label>SALE (RUT)</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="text" name="sale_rut" placeholder="12345678" inputmode="numeric" pattern="[0-9]{6,8}" required>
+    </div>
+    <div style="width:80px;">
+      <label>DV</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="text" name="sale_dv" placeholder="K/0-9" maxlength="1" pattern="[0-9Kk]" required>
+    </div>
+    <div style="width:100px;">
+      <label>Camiseta</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="number" name="sale_camiseta" min="0" max="999" placeholder="Ej: 8" required>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:center; width:100%;">
+      <span style="font-size:24px; color:#a78bfa;">⬅️ ➡️</span>
+    </div>
+
+    <!-- ENTRA -->
+    <div style="flex:1; min-width:220px;">
+      <label>ENTRA (RUT)</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="text" name="entra_rut" placeholder="12345678" inputmode="numeric" pattern="[0-9]{6,8}" required>
+    </div>
+    <div style="width:80px;">
+      <label>DV</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="text" name="entra_dv" placeholder="K/0-9" maxlength="1" pattern="[0-9Kk]" required>
+    </div>
+    <div style="width:100px;">
+      <label>Camiseta</label>
+      <input {% if nomina_enviada %}disabled{% endif %} type="number" name="entra_camiseta" min="0" max="999" placeholder="Ej: 14" required>
+    </div>
+
+    <div style="align-self:flex-end;">
+      <button class="btn" type="submit" {% if nomina_enviada %}disabled{% endif %}>Agregar Cambio</button>
+    </div>
+  </form>
+
+  <p class="sub" style="margin-top:8px;">📋 Tip: los jugadores deben estar en la nómina oficial.</p>
+</div>
+
+<!-- ============================================== -->
+<!-- 🔄 Cambios Realizados (desde jugador_partido) -->
+<!-- ============================================== -->
+{% if cambios_local or cambios_visita %}
+<div class="card" style="margin-top:20px;">
+  <h3>🔄 Cambios Realizados</h3>
+
+  {% if cambios_local %}
+    <h4 style="color:#e5e7eb;">🏠 {{ club_local_txt }}</h4>
+    <ul style="list-style:none; padding-left:0; color:#d1d5db;">
+      {% for c in cambios_local %}
+        <li style="margin-bottom:4px;">
+          ⬅️ <b>{{ c.sale.0 }}</b> (#{{ c.sale.1 }}) sale — 
+          ➡️ <b>{{ c.entra.0 }}</b> (#{{ c.entra.1 }}) entra
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if cambios_visita %}
+    <h4 style="color:#e5e7eb;">🛫 {{ club_visita_txt }}</h4>
+    <ul style="list-style:none; padding-left:0; color:#d1d5db;">
+      {% for c in cambios_visita %}
+        <li style="margin-bottom:4px;">
+          ⬅️ <b>{{ c.sale.0 }}</b> (#{{ c.sale.1 }}) sale — 
+          ➡️ <b>{{ c.entra.0 }}</b> (#{{ c.entra.1 }}) entra
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+
+<!-- Indicador de Cambios Realizados -->
+{% if cambios_local or cambios_visita %}
+<div class="card" style="margin-top:16px;">
+  <h3>🔄 Cambios Realizados</h3>
+
+  {% if cambios_local %}
+    <h4 style="color:#e5e7eb;">🏠 {{ club_local_txt }}</h4>
+    <ul style="list-style:none; padding-left:0; color:#9ca3af;">
+      {% for c in cambios_local %}
+        <li style="margin-bottom:4px;">
+          ➡️ <b>{{ c.entra_nombre }}</b> entra &nbsp;&nbsp; ⬅️ <b>{{ c.sale_nombre }}</b> sale
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if cambios_visita %}
+    <h4 style="color:#e5e7eb;">🛫 {{ club_visita_txt }}</h4>
+    <ul style="list-style:none; padding-left:0; color:#9ca3af;">
+      {% for c in cambios_visita %}
+        <li style="margin-bottom:4px;">
+          ➡️ <b>{{ c.entra_nombre }}</b> entra &nbsp;&nbsp; ⬅️ <b>{{ c.sale_nombre }}</b> sale
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+
+  <div style="text-align:center;margin-top:1rem;">
+    <a href="{% url 'dashboard' %}" style="color:#a78bfa;">← Volver al Panel</a>
+  </div>
+
+
+<!-- ============================================================ -->
+<!-- NÓMINA VERIFICADA -->
+<!-- ============================================================ -->
+<div class="card">
+  <h3>Nómina Verificada</h3>
+
+  {% if partido_id %}
+    <!-- ================= LOCAL ================= -->
+    <h4 style="margin-top:12px;color:#e5e7eb;">🏠 Local: <b>{{ club_local_txt }}</b>
+      <span class="badge b-info">{{ nomina_local|length }} jugadores</span>
+    </h4>
+
+    <!-- Titulares Local -->
+    <h5 style="color:#a78bfa; margin-top:10px;">Titulares</h5>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>RUT</th>
+            <th>Nombre</th>
+            <th>Serie</th>
+            <th>Camiseta</th>
+            <th>Edad</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in nomina_local %}
+            {% if j.titular %}
+              <tr>
+                <td>{{ j.rut }}-{{ j.dv }}</td>
+                <td>{{ j.nombre }}</td>
+                <td>{{ j.serie }}</td>
+                <td>{{ j.camiseta }}</td>
+                <td>{{ j.edad }}</td>
+                <td>
+                  {% if not nomina_enviada %}
+                  <form method="post" style="display:inline;">{% csrf_token %}
+                    <input type="hidden" name="id_partido" value="{{ partido_id }}">
+                    <input type="hidden" name="rut" value="{{ j.rut }}">
+                    <input type="hidden" name="dv" value="{{ j.dv }}">
+                    <button class="btn-danger" type="submit" name="eliminar" value="1">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Suplentes Local -->
+    <h5 style="color:#94a3b8; margin-top:15px;">Suplentes</h5>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>RUT</th>
+            <th>Nombre</th>
+            <th>Serie</th>
+            <th>Camiseta</th>
+            <th>Edad</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in nomina_local %}
+            {% if not j.titular %}
+              <tr>
+                <td>{{ j.rut }}-{{ j.dv }}</td>
+                <td>{{ j.nombre }}</td>
+                <td>{{ j.serie }}</td>
+                <td>{{ j.camiseta }}</td>
+                <td>{{ j.edad }}</td>
+                <td>
+                  {% if not nomina_enviada %}
+                  <form method="post" style="display:inline;">{% csrf_token %}
+                    <input type="hidden" name="id_partido" value="{{ partido_id }}">
+                    <input type="hidden" name="rut" value="{{ j.rut }}">
+                    <input type="hidden" name="dv" value="{{ j.dv }}">
+                    <button class="btn-danger" type="submit" name="eliminar" value="1">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <hr style="border:0;border-top:1px solid #374151;margin:1.5rem 0;">
+
+    <!-- ================= VISITA ================= -->
+    <h4 style="margin-top:12px;color:#e5e7eb;">🛫 Visita: <b>{{ club_visita_txt }}</b>
+      <span class="badge b-info">{{ nomina_visita|length }} jugadores</span>
+    </h4>
+
+    <!-- Titulares Visita -->
+    <h5 style="color:#a78bfa; margin-top:10px;">Titulares</h5>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>RUT</th>
+            <th>Nombre</th>
+            <th>Serie</th>
+            <th>Camiseta</th>
+            <th>Edad</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in nomina_visita %}
+            {% if j.titular %}
+              <tr>
+                <td>{{ j.rut }}-{{ j.dv }}</td>
+                <td>{{ j.nombre }}</td>
+                <td>{{ j.serie }}</td>
+                <td>{{ j.camiseta }}</td>
+                <td>{{ j.edad }}</td>
+                <td>
+                  {% if not nomina_enviada %}
+                  <form method="post" style="display:inline;">{% csrf_token %}
+                    <input type="hidden" name="id_partido" value="{{ partido_id }}">
+                    <input type="hidden" name="rut" value="{{ j.rut }}">
+                    <input type="hidden" name="dv" value="{{ j.dv }}">
+                    <button class="btn-danger" type="submit" name="eliminar" value="1">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Suplentes Visita -->
+    <h5 style="color:#94a3b8; margin-top:15px;">Suplentes</h5>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>RUT</th>
+            <th>Nombre</th>
+            <th>Serie</th>
+            <th>Camiseta</th>
+            <th>Edad</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in nomina_visita %}
+            {% if not j.titular %}
+              <tr>
+                <td>{{ j.rut }}-{{ j.dv }}</td>
+                <td>{{ j.nombre }}</td>
+                <td>{{ j.serie }}</td>
+                <td>{{ j.camiseta }}</td>
+                <td>{{ j.edad }}</td>
+                <td>
+                  {% if not nomina_enviada %}
+                  <form method="post" style="display:inline;">{% csrf_token %}
+                    <input type="hidden" name="id_partido" value="{{ partido_id }}">
+                    <input type="hidden" name="rut" value="{{ j.rut }}">
+                    <input type="hidden" name="dv" value="{{ j.dv }}">
+                    <button class="btn-danger" type="submit" name="eliminar" value="1">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Botón central de Enviar Nómina -->
+    <div style="text-align:center; margin-top:25px;">
+      <form method="post" style="display:inline-block;">
+        {% csrf_token %}
+        <input type="hidden" name="id_partido" value="{{ partido_id }}">
+        {% if nomina_enviada %}
+          <p class="sub">✅ Nómina enviada. La edición queda bloqueada.</p>
+        {% else %}
+          <button class="btn" style="padding:10px 22px; font-size:16px;" type="submit" name="enviar_nomina" value="1">
+            📤 Enviar Nómina
+          </button>
+        {% endif %}
+      </form>
+    </div>
+
+  {% else %}
+    <p class="sub">Selecciona un partido para ver su nómina.</p>
+  {% endif %}
+</div>
+
+
+</div>
+
+<script>
+  // Normalización de inputs
+  document.addEventListener('input', (e) => {
+    const id = e.target.id;
+    const name = e.target.name;
+    if (id === 'rut') e.target.value = e.target.value.replace(/\D/g,'').slice(0,8);
+    if (id === 'dv') e.target.value = e.target.value.replace(/[^0-9Kk]/g,'').toUpperCase().slice(0,1);
+    if (id === 'camiseta') e.target.value = e.target.value.replace(/\D/g,'').slice(0,3);
+
+    if (name === 'sale_rut' || name === 'entra_rut') {
+      e.target.value = e.target.value.replace(/\D/g,'').slice(0,8);
+    }
+    if (name === 'sale_dv' || name === 'entra_dv') {
+      e.target.value = e.target.value.replace(/[^0-9Kk]/g,'').toUpperCase().slice(0,1);
+    }
+    if (name === 'sale_camiseta' || name === 'entra_camiseta' || name === 'camiseta') {
+      e.target.value = e.target.value.replace(/\D/g,'').slice(0,3);
+    }
+  });
+</script>
+{% endblock %}

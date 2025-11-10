@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}Reglamento del Campeonato{% endblock %}
+{% block content %}
+<style>
+  .wrap { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+  h2 { color:#a78bfa; margin-bottom: 8px; text-align:center; }
+  p.sub { color:#94a3b8; text-align:center; margin:4px 0 16px; }
+
+  .card { background:#1f2937; border-radius:12px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.3); margin-bottom:16px; }
+  .btn{ background:#a78bfa; color:#111827; border:none; padding:9px 14px; border-radius:8px; cursor:pointer; font-weight:700; }
+  .btn:hover{ background:#8b5cf6; color:#fff; }
+  .btn-ghost{ background:#111827; border:1px solid #a78bfa; color:#a78bfa; }
+  .btn-ghost:hover{ background:#0c1220; border-color:#8b5cf6; color:#fff; }
+
+  label { display:block; color:#cbd5e1; font-size:14px; margin-bottom:6px; }
+  textarea, input[type="text"] {
+    width:100%; background:#111827; border:1px solid #374151; border-radius:8px;
+    color:#f3f4f6; padding:8px 10px; box-sizing:border-box;
+  }
+  textarea { min-height:200px; resize:vertical; }
+  .grid-2 { display:grid; grid-template-columns: 1fr; gap:16px; }
+  @media (min-width: 900px){ .grid-2 { grid-template-columns: 2fr 1fr; } }
+  .msg { text-align:center; margin:8px 0; }
+  .msg.ok  { color:#34d399; }
+  .msg.err { color:#f87171; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-left:8px; }
+  .pill-on { background:#34d399; color:#062e22; }
+  .pill-off { background:#fbbf24; color:#3a2506; }
+</style>
+
+<div class="wrap">
+  <h2>Reglamento del Campeonato</h2>
+  <p class="sub">Administra la versión vigente del reglamento y sus reglas.</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="msg {% if message.tags == 'success' %}ok{% else %}err{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="grid-2">
+    <div class="card">
+      <h3 style="color:#e5e7eb; margin-top:0;">Editar / Crear versión</h3>
+      <form method="post" action="{% url 'reglamento_admin' %}" style="display:grid; gap:10px;">
+        {% csrf_token %}
+        <div>
+          <label>Reglas (Markdown/Texto)</label>
+          <textarea name="reglas" placeholder="Redacta o pega las reglas del campeonato...">{% if reglamento %}{{ reglamento.1 }}{% endif %}</textarea>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="activo" name="activo" {% if reglamento and reglamento.2 %}checked{% endif %}>
+          <label for="activo" style="margin:0;">Marcar como versión activa</label>
+        </div>
+        <div style="text-align:right;">
+          <button class="btn" type="submit">Guardar reglamento</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="color:#e5e7eb; margin-top:0;">Versión actual</h3>
+      {% if reglamento %}
+        <p style="color:#cbd5e1; margin:0;">
+          <b>ID:</b> {{ reglamento.0 }}
+          {% if reglamento.2 %}
+            <span class="pill pill-on">Activo</span>
+          {% else %}
+            <span class="pill pill-off">Inactivo</span>
+          {% endif %}
+        </p>
+        <p style="color:#cbd5e1; margin:6px 0 0;">
+          <b>Vigencia:</b>
+          {% if reglamento.3 %}desde {{ reglamento.3|date:"Y-m-d" }}{% else %}—{% endif %}
+          {% if reglamento.4 %} hasta {{ reglamento.4|date:"Y-m-d" }}{% endif %}
+        </p>
+        <p style="color:#94a3b8; font-size:12px; margin-top:6px;">
+          <b>Creado:</b> {% if reglamento.5 %}{{ reglamento.5|date:"Y-m-d" }}{% else %}—{% endif %}
+        </p>
+        <div style="margin-top:10px; color:#e5e7eb; white-space:pre-wrap; border-top:1px solid #374151; padding-top:10px;">
+          {{ reglamento.1 }}
+        </div>
+      {% else %}
+        <p class="sub">No existe una versión previa del reglamento.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="text-align:center; margin-top:10px;">
+    <a href="{% url 'dashboard' %}" class="btn-ghost">← Volver al Panel</a>
+  </div>
+</div>
+{% endblock %}

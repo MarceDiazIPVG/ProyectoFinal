@@ -1,0 +1,491 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Redactar Acta{% endblock %}
+{% block content %}
+<style>
+  body {
+    background-color: #0b1120;
+    color: #f1f5f9;
+    font-family: 'Poppins', sans-serif;
+  }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 40px auto;
+    background: #111827;
+    border-radius: 14px;
+    box-shadow: 0 0 25px rgba(0,0,0,.4);
+    overflow: hidden;
+  }
+
+  .header {
+    background: linear-gradient(90deg,#1e293b,#0f172a);
+    color: #f1f5f9;
+    padding: 24px 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 2px solid #334155;
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .content {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px;
+  }
+
+  .card-info {
+    flex: 1 1 300px;
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 18px;
+    border: 1px solid #334155;
+  }
+
+  .card-info p {
+    margin: 6px 0;
+    font-size: 0.95rem;
+  }
+
+  .card-info strong {
+    color: #38bdf8;
+    font-weight: 600;
+  }
+
+  .scoreboard {
+    flex: 2 1 550px;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border-radius: 14px;
+    color: #f9fafb;
+    padding: 26px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: inset 0 2px 8px rgba(255,255,255,.05);
+  }
+
+  .team {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 35%;
+  }
+
+  .team-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin: 10px 0;
+    text-align: center;
+  }
+
+  .score-input {
+    width: 90px;
+    height: 80px;
+    font-size: 2.8rem;
+    font-weight: 700;
+    text-align: center;
+    border: none;
+    border-radius: 10px;
+    background: #e2e8f0;
+    color: #000;
+    outline: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+
+  .score-input:focus {
+    outline: 2px solid #a78bfa;
+  }
+
+  .vs {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #64748b;
+  }
+
+  .form-section {
+    padding: 0 24px 24px 24px;
+  }
+
+  form label {
+    font-weight: 600;
+    display: block;
+    margin-top: 14px;
+    color: #e2e8f0;
+  }
+
+  form textarea,
+  form input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-family: 'Poppins', sans-serif;
+    font-size: .95rem;
+    background: #1e293b;
+    color: #f1f5f9;
+    transition: all .2s ease;
+  }
+
+  form textarea:focus,
+  form input:focus {
+    border-color: #a78bfa;
+    box-shadow: 0 0 0 2px rgba(167,139,250,.2);
+    outline: none;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 16px;
+  }
+
+  .form-row > div {
+    flex: 1;
+  }
+
+  .btn-group {
+    margin-top: 24px;
+  }
+
+  .btn-submit {
+    background: #a78bfa;
+    color: #111827;
+    font-weight: 600;
+    padding: 10px 22px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all .2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,.2);
+  }
+
+  .btn-submit:hover {
+    background: #8b5cf6;
+    color: #fff;
+  }
+
+  .btn-back {
+    margin-left: 10px;
+    background: #334155;
+    color: #f1f5f9;
+    padding: 10px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all .2s ease;
+  }
+
+  .btn-back:hover {
+    background: #475569;
+  }
+
+  /* ====== NÓMINAS DE JUGADORES ====== */
+  .nominas-wrap {
+    padding: 0 24px 24px 24px;
+  }
+
+  .nominas-title {
+    margin: 8px 0 12px 0;
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+
+  .nominas-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+
+  .nomina-card {
+    flex: 1 1 260px;
+    background: #020617;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    padding: 12px 14px;
+  }
+
+  .nomina-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+    color: #a5b4fc;
+  }
+
+  .nomina-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: .9rem;
+  }
+
+  .nomina-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid #1e293b;
+  }
+
+  .nomina-list li:last-child {
+    border-bottom: none;
+  }
+
+  .badge-num {
+    background: #0f172a;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-weight: 600;
+    margin-right: 8px;
+    color: #e5e7eb;
+    font-size: .85rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="header">
+    <h1>⚽ Redactar Acta del Partido</h1>
+  </div>
+
+  <form method="POST">
+    {% csrf_token %}
+    <div class="content">
+      <div class="card-info">
+        <p><strong>Fecha:</strong> {{ partido.fecha|date:"d/m/Y" }}</p>
+        <p><strong>Hora:</strong> {{ partido.hora|default:"—" }}</p>
+        <p><strong>Cancha:</strong> {{ partido.cancha }}</p>
+        <p><strong>Estado:</strong> {{ partido.estado }}</p>
+      </div>
+
+      <div class="scoreboard">
+        <div class="team">
+          <div class="team-name">{{ partido.local }}</div>
+          <input type="number" name="goles_local" class="score-input" min="0" max="20" required>
+        </div>
+
+        <div class="vs">-</div>
+
+        <div class="team">
+          <div class="team-name">{{ partido.visita }}</div>
+          <input type="number" name="goles_visita" class="score-input" min="0" max="20" required>
+        </div>
+      </div>
+    </div>
+
+    <!-- 👇 SECCIÓN DE NÓMINAS CON TARJETAS -->
+<div class="nominas-wrap">
+  <p class="nominas-title">Nómina de jugadores (solo nombre y camiseta):</p>
+  <div class="nominas-grid">
+
+    <!-- 🏠 EQUIPO LOCAL -->
+    <div class="nomina-card">
+      <h3>{{ partido.local }}</h3>
+      {% if nomina_local %}
+        <ul class="nomina-list">
+          {% for j in nomina_local %}
+          <li id="jugador-local-{{ j.camiseta }}"
+              data-nombre="{{ j.nombre }}"
+              data-equipo="{{ partido.local }}">
+            <span>
+              <span class="badge-num">#{{ j.camiseta }}</span> {{ j.nombre }}
+            </span>
+            <span class="acciones-jugador" style="float:right;">
+              <button type="button" class="btn-tarjeta" data-equipo="local" data-numero="{{ j.camiseta }}" data-color="amarilla">🟨</button>
+              <button type="button" class="btn-tarjeta" data-equipo="local" data-numero="{{ j.camiseta }}" data-color="roja">🟥</button>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No hay nómina cargada para el local.</p>
+      {% endif %}
+    </div>
+
+    <!-- 🛫 EQUIPO VISITA -->
+    <div class="nomina-card">
+      <h3>{{ partido.visita }}</h3>
+      {% if nomina_visita %}
+        <ul class="nomina-list">
+          {% for j in nomina_visita %}
+         <li id="jugador-visita-{{ j.camiseta }}"
+                data-nombre="{{ j.nombre }}"
+                data-equipo="{{ partido.visita }}">
+            <span>
+              <span class="badge-num">#{{ j.camiseta }}</span> {{ j.nombre }}
+            </span>
+
+            <span class="acciones-jugador" style="float:right;">
+              <button type="button" class="btn-tarjeta" data-equipo="visita" data-numero="{{ j.camiseta }}" data-color="amarilla">🟨</button>
+              <button type="button" class="btn-tarjeta" data-equipo="visita" data-numero="{{ j.camiseta }}" data-color="roja">🟥</button>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No hay nómina cargada para la visita.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const sanciones = {};
+  const textareaIncidentes = document.getElementById("incidentes");
+
+  if (!textareaIncidentes) return console.warn("⚠️ No se encontró el textarea con id='incidentes'");
+
+  document.querySelectorAll(".btn-tarjeta").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const equipo = btn.dataset.equipo;
+      const numero = btn.dataset.numero;
+      const color = btn.dataset.color;
+      const key = `${equipo}-${numero}`;
+      const jugador = document.getElementById(`jugador-${equipo}-${numero}`);
+      const nombre = jugador.dataset.nombre || `#${numero}`;
+      const equipoNombre = jugador.dataset.equipo || "Equipo desconocido";
+
+      if (!sanciones[key]) sanciones[key] = { amarillas: 0, roja: false, nombre, equipo: equipoNombre };
+
+      // 🟨 TARJETA AMARILLA
+      if (color === "amarilla") {
+        if (sanciones[key].roja) return alert("⚠️ Este jugador ya fue expulsado.");
+        sanciones[key].amarillas++;
+
+        if (sanciones[key].amarillas === 1) {
+          jugador.querySelector(".estado")?.remove();
+          jugador.insertAdjacentHTML("beforeend", `<span class="estado" style="color:#facc15;margin-left:6px;">🟨 Amonestado</span>`);
+          agregarIncidente(equipoNombre, nombre, numero, "Amonestación (tarjeta amarilla)");
+        } else if (sanciones[key].amarillas === 2) {
+          sanciones[key].roja = true;
+          jugador.querySelector(".estado")?.remove();
+          jugador.insertAdjacentHTML("beforeend", `
+            <span class="estado" style="color:#ef4444;margin-left:6px;">🟥 Expulsado (doble amarilla)</span>
+            <button type="button" class="btn-deshacer" data-equipo="${equipo}" data-numero="${numero}">↩ Deshacer</button>
+          `);
+          jugador.querySelectorAll(".btn-tarjeta").forEach(b => b.style.display = "none");
+          agregarIncidente(equipoNombre, nombre, numero, "Expulsión (doble amarilla)");
+        } else {
+          sanciones[key].amarillas = 2;
+          alert("⚠️ Máximo 2 amarillas por jugador.");
+        }
+      }
+
+      // 🟥 TARJETA ROJA DIRECTA
+      if (color === "roja") {
+        if (sanciones[key].roja) return alert("⚠️ Este jugador ya fue expulsado.");
+        sanciones[key].roja = true;
+        jugador.querySelector(".estado")?.remove();
+        jugador.insertAdjacentHTML("beforeend", `
+          <span class="estado" style="color:#ef4444;margin-left:6px;">🟥 Expulsado</span>
+          <button type="button" class="btn-deshacer" data-equipo="${equipo}" data-numero="${numero}">↩ Deshacer</button>
+        `);
+        jugador.querySelectorAll(".btn-tarjeta").forEach(b => b.style.display = "none");
+        agregarIncidente(equipoNombre, nombre, numero, "Expulsión (tarjeta roja directa)");
+      }
+
+      // ↩ DESHACER
+      jugador.querySelectorAll(".btn-deshacer").forEach(btnDeshacer => {
+        btnDeshacer.onclick = () => {
+          const eq = btnDeshacer.dataset.equipo;
+          const num = btnDeshacer.dataset.numero;
+          const k = `${eq}-${num}`;
+          const jug = document.getElementById(`jugador-${eq}-${num}`);
+          const jugadorNombre = sanciones[k]?.nombre || `#${num}`;
+          const equipoNom = sanciones[k]?.equipo || "Equipo desconocido";
+
+          // 🔹 Eliminar visualmente
+          delete sanciones[k];
+          jug.querySelector(".estado")?.remove();
+          jug.querySelector(".btn-deshacer")?.remove();
+          jug.querySelectorAll(".btn-tarjeta").forEach(b => b.style.display = "");
+
+          // 🔹 Eliminar texto del textarea (sin importar tildes o mayúsculas)
+          const regex = new RegExp(jugadorNombre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+          const regexEquipo = new RegExp(equipoNom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+          const lineas = textareaIncidentes.value
+            .split("\n")
+            .filter(linea => !(regex.test(linea) && regexEquipo.test(linea)));
+
+          textareaIncidentes.value = lineas.join("\n").trim();
+        };
+      });
+    });
+  });
+
+  // 🧾 Añadir registro en textarea
+  function agregarIncidente(equipo, nombre, numero, texto) {
+    const linea = `Sancionado con ${texto} al jugador ${nombre} (#${numero}) de ${equipo}.`;
+    textareaIncidentes.value = textareaIncidentes.value
+      ? textareaIncidentes.value.trim() + "\n" + linea
+      : linea;
+  }
+});
+</script>
+
+
+
+
+
+<style>
+/* === Tarjetas de sanción === */
+.btn-tarjeta {
+  border: none;
+  background: transparent;      /* 🔹 Elimina fondo blanco */
+  cursor: pointer;
+  font-size: 1.1rem;
+  margin-left: 6px;
+  padding: 2px;
+  transition: transform 0.15s ease;
+}
+
+.btn-tarjeta:hover {
+  transform: scale(1.25);
+  filter: brightness(1.2);
+}
+
+/* === Estado (Amonestado / Expulsado) === */
+.estado {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+/* === Botón Deshacer === */
+.btn-deshacer {
+  margin-left: 8px;
+  background: #1e3a8a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-deshacer:hover {
+  background: #2563eb;
+}
+</style>
+
+
+    <div class="form-section">
+      <label for="incidentes">Incidentes o Sanciones</label>
+      <textarea id="incidentes" name="incidentes" placeholder="Describe los incidentes ocurridos (expulsiones, retrasos, agresiones, etc.)"></textarea>
+      <div class="btn-group">
+        <button type="submit" class="btn-submit">💾 Enviar Acta</button>
+        <a href="{% url 'partidos_asignados' %}" class="btn-back">← Volver</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
