@@ -831,7 +831,7 @@ def asignar_partidos(request):
             return redirect("asignar_partidos")
 
         # ---------------------------
-        # Asignar Turno
+        # Asignar Turno (jugador O usuario del club de turno)
         # ---------------------------
         if assign_turno:
             rut_str = (request.POST.get("rut_turno") or "").strip()
@@ -843,7 +843,7 @@ def asignar_partidos(request):
 
             rut = int(rut_str)
 
-            # Usuario existe
+            # 1) Verificar que el usuario exista
             with connection.cursor() as cursor:
                 cursor.execute("""
                     SELECT u.nombre, u.apellidop, u.apellidom
@@ -855,23 +855,68 @@ def asignar_partidos(request):
                 messages.error(request, f"El RUT {rut}-{dv} no existe en usuarios.")
                 return redirect("asignar_partidos")
 
-            # Rol Turno activo
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT 1
-                      FROM usuarios_roles ur
-                      JOIN roles r ON r.rol_id = ur.rol_id
-                     WHERE ur.rut = %s AND UPPER(ur.digitov) = UPPER(%s)
-                       AND LOWER(r.nombre_rol) = 'turno'
-                       AND LOWER(COALESCE(ur.estado,'')) = 'activo'
+            # 2) Verificar que sea MAYOR DE EDAD
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT 
+                            fecha_nacimiento,
+                            (DATE_PART('year', AGE(CURRENT_DATE, fecha_nacimiento)) >= 18) AS es_mayor
+                      FROM usuarios
+                     WHERE rut = %s AND UPPER(digitov) = UPPER(%s)
                      LIMIT 1;
-                """, [rut, dv])
-                es_turno = cursor.fetchone()
-            if not es_turno:
-                messages.error(request, "El usuario no posee rol de Turno activo.")
+                    """, [rut, dv])
+                    row_edad = cursor.fetchone()
+            except Exception:
+                row_edad = None
+
+            if not row_edad or not row_edad[1]:
+                messages.error(request, "El turno debe ser una persona mayor de edad.")
                 return redirect("asignar_partidos")
 
-            # Guardar
+            # 3) Determinar qué club está de turno (equipo libre en esa fecha/serie)
+            id_club_turno = _get_club_turno_para_partido(partido_id)
+            if not id_club_turno:
+                messages.error(request, "No fue posible determinar el club de turno (equipo libre) para este partido.")
+                return redirect("asignar_partidos")
+
+            # 4) Verificar que la persona sea de ese club de turno (jugador o usuario)
+            pertenece_club_turno = False
+
+            with connection.cursor() as cursor:
+                # Como JUGADOR del club
+                cursor.execute("""
+                    SELECT id_club
+                      FROM jugadores
+                     WHERE rut_jugador = %s
+                       AND UPPER(digitov) = UPPER(%s)
+                     LIMIT 1;
+                """, [rut, dv])
+                fila_jug = cursor.fetchone()
+                if fila_jug and fila_jug[0] == id_club_turno:
+                    pertenece_club_turno = True
+
+                # Como USUARIO asociado al club (usuarios.id_club)
+                if not pertenece_club_turno:
+                    cursor.execute("""
+                        SELECT id_club
+                          FROM usuarios
+                         WHERE rut = %s
+                           AND UPPER(digitov) = UPPER(%s)
+                         LIMIT 1;
+                    """, [rut, dv])
+                    fila_usu = cursor.fetchone()
+                    if fila_usu and fila_usu[0] == id_club_turno:
+                        pertenece_club_turno = True
+
+            if not pertenece_club_turno:
+                messages.error(
+                    request,
+                    "La persona indicada para Turno no pertenece al club que hace turno (equipo libre) en esta fecha."
+                )
+                return redirect("asignar_partidos")
+
+            # 5) Guardar asignación de turno
             try:
                 with connection.cursor() as cursor:
                     cursor.execute("""
@@ -880,7 +925,10 @@ def asignar_partidos(request):
                          WHERE id_partido = %s;
                     """, [rut, dv, partido_id])
                 nombre_completo = " ".join(filter(None, user))
-                messages.success(request, f"Turno {nombre_completo} ({rut}-{dv}) asignado al partido {partido_id}.")
+                messages.success(
+                    request,
+                    f"Turno {nombre_completo} ({rut}-{dv}) asignado correctamente para el club de turno en el partido {partido_id}."
+                )
             except Exception as e:
                 messages.error(request, f"Error al asignar turno: {e}")
             return redirect("asignar_partidos")
@@ -889,23 +937,193 @@ def asignar_partidos(request):
         return redirect("asignar_partidos")
 
     # ---------------------------
-    # GET: traer partidos + árbitro + turno
+    # GET: traer partidos + árbitro + turno + club de turno
     # ---------------------------
+    partidos_info = []
+
     with connection.cursor() as cursor:
         cursor.execute("""
-            SELECT p.id_partido, p.fecha, p.hora, p.club_local, p.club_visitante,
-                   p.rut, p.digitov,               -- Árbitro
-                   p.rut_turno, p.digitov_turno    -- Turno
+            SELECT p.id_partido,
+                   p.fecha,
+                   p.hora,
+                   p.club_local,
+                   p.club_visitante,
+                   p.rut,           -- Árbitro RUT
+                   p.digitov,       -- Árbitro DV
+                   p.rut_turno,     -- Turno RUT
+                   p.digitov_turno  -- Turno DV
               FROM partidos p
              WHERE p.fecha >= CURRENT_DATE - INTERVAL '30 day'
-          ORDER BY (p.rut IS NULL OR TRIM(COALESCE(p.digitov,'')) = '') DESC,
-                   p.fecha ASC, p.hora ASC, p.id_partido ASC;
+          ORDER BY p.fecha ASC, p.hora ASC, p.id_partido ASC;
         """)
-        partidos = cursor.fetchall()
+        rows = cursor.fetchall()
 
-    return render(request, "accounts/asignar_partidos.html", {"partidos": partidos})
+    for (
+        id_partido,
+        fecha,
+        hora,
+        club_local,
+        club_visitante,
+        rut_arbitro,
+        dv_arbitro,
+        rut_turno,
+        dv_turno,
+    ) in rows:
+
+        # Nombre completo del árbitro
+        nombre_arbitro = None
+        if rut_arbitro and dv_arbitro:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT CONCAT(nombre, ' ', apellidop, ' ', apellidom)
+                      FROM usuarios
+                     WHERE rut = %s AND UPPER(digitov) = UPPER(%s)
+                     LIMIT 1;
+                """, [rut_arbitro, dv_arbitro])
+                row_arbitro = cursor.fetchone()
+                if row_arbitro:
+                    nombre_arbitro = row_arbitro[0]
+
+        # Nombre completo del turno
+        nombre_turno = None
+        if rut_turno and dv_turno:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT CONCAT(nombre, ' ', apellidop, ' ', apellidom)
+                      FROM usuarios
+                     WHERE rut = %s AND UPPER(digitov) = UPPER(%s)
+                     LIMIT 1;
+                """, [rut_turno, dv_turno])
+                row_turno = cursor.fetchone()
+                if row_turno:
+                    nombre_turno = row_turno[0]
+
+        # calcular club de turno (equipo libre)
+        id_club_turno = _get_club_turno_para_partido(id_partido)
+        club_turno_nombre = None
+
+        if id_club_turno:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT nombre
+                      FROM club
+                     WHERE id_club = %s
+                     LIMIT 1;
+                """, [id_club_turno])
+                row_club = cursor.fetchone()
+                if row_club:
+                    club_turno_nombre = row_club[0]
+
+        partidos_info.append({
+            "id": id_partido,
+            "fecha": fecha,
+            "hora": hora,
+            "club_local": club_local,
+            "club_visitante": club_visitante,
+            "rut_arbitro": rut_arbitro,
+            "dv_arbitro": dv_arbitro,
+            "nombre_arbitro": nombre_arbitro,
+            "rut_turno": rut_turno,
+            "dv_turno": dv_turno,
+            "nombre_turno": nombre_turno,
+            "club_turno_nombre": club_turno_nombre,
+        })
+
+    return render(request, "accounts/asignar_partidos.html", {
+        "partidos": partidos_info
+    })
 
 
+def _get_club_turno_para_partido(id_partido: int):
+    """
+    Determina qué club le toca hacer turno para el partido dado, por FECHA (jornada),
+    asegurando que NO sea un club que juegue ese día:
+
+    - Usa id_serie y fecha del partido.
+    - Obtiene todas las fechas (jornadas) de esa serie ordenadas ascendentemente.
+    - Obtiene todos los clubes que participan en la serie (club_serie), ordenados por nombre.
+    - Calcula un índice de turno base usando la fecha: idx_fecha % len(clubes).
+    - A partir de ese índice, busca un club que NO juegue esa fecha (ni local ni visita).
+      Ese será el club de turno (equipo de la jornada).
+    """
+
+    # 1) Obtener serie y fecha del partido
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id_serie, fecha
+              FROM partidos
+             WHERE id_partido = %s
+             LIMIT 1;
+        """, [id_partido])
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    id_serie, fecha = row
+
+    # 2) Todas las fechas (jornadas) de esa serie, ordenadas
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT DISTINCT fecha
+              FROM partidos
+             WHERE id_serie = %s
+          ORDER BY fecha ASC;
+        """, [id_serie])
+        fechas_rows = cursor.fetchall()
+
+    fechas = [f[0] for f in fechas_rows]
+
+    if not fechas or fecha not in fechas:
+        return None
+
+    # Índice de la fecha actual (0, 1, 2, ...) => jornada
+    idx_fecha = fechas.index(fecha)
+
+    # 3) Clubes que participan en esa serie, ordenados por nombre
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT cs.id_club
+              FROM club_serie cs
+              JOIN club c ON c.id_club = cs.id_club
+             WHERE cs.id_serie = %s
+          ORDER BY LOWER(c.nombre);
+        """, [id_serie])
+        clubes_rows = cursor.fetchall()
+
+    clubes = [r[0] for r in clubes_rows]
+
+    if not clubes:
+        return None
+
+    # 4) Clubes que juegan ese mismo día en la misma serie (local o visita)
+    clubes_en_fecha = set()
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id_club_local, id_club_visitante
+              FROM partidos
+             WHERE id_serie = %s
+               AND fecha    = %s;
+        """, [id_serie, fecha])
+        for cl, cv in cursor.fetchall():
+            if cl:
+                clubes_en_fecha.add(cl)
+            if cv:
+                clubes_en_fecha.add(cv)
+
+    # 5) Seleccionar club de turno a partir de la fecha (rotación),
+    #    pero saltando los que juegan ese día.
+    n = len(clubes)
+    idx_base = idx_fecha % n
+
+    for offset in range(n):
+        idx = (idx_base + offset) % n
+        candidato = clubes[idx]
+        if candidato not in clubes_en_fecha:
+            return candidato
+
+    # Si TODOS juegan (caso extremo), no hay club de turno
+    return None
 # ============================================================
 # PERFIL ÁRBITRO
 # ============================================================
@@ -2296,47 +2514,119 @@ def panel_tribunal(request):
     # 🔹 Si el tribunal actualiza una acta
     # ============================================================
     if request.method == "POST":
-        id_acta = request.POST.get("id_acta")
-        nuevo_estado = request.POST.get("estado")
-        observacion = request.POST.get("observacion", "").strip()
+        id_acta       = request.POST.get("id_acta")
+        nuevo_estado  = request.POST.get("estado")
+        observacion   = (request.POST.get("observacion") or "").strip()
+
+        # Campos opcionales para sanción dictada por el Tribunal
+        id_jugador_raw   = (request.POST.get("id_jugador") or "").strip()
+        id_club_raw      = (request.POST.get("id_club") or "").strip()
+        tipo_sancion     = (request.POST.get("tipo_sancion") or "").strip()
+        motivo_sancion_f = (request.POST.get("motivo_sancion") or "").strip()
+
+        # Normalizar a enteros / None
+        id_jugador = int(id_jugador_raw) if id_jugador_raw.isdigit() else None
+        id_club    = int(id_club_raw)    if id_club_raw.isdigit()    else None
 
         if id_acta and nuevo_estado:
             with connection.cursor() as cursor:
                 # ============================================================
-                # 🔄 Actualización del estado del acta (con devolución al árbitro)
+                # 🔄 Actualización del estado del acta
                 # ============================================================
                 cursor.execute("""
                     UPDATE estado_acta
-                    SET nombre_estado = %s,
-                        descripcion   = %s
-                    WHERE id_acta = %s;
+                       SET nombre_estado = %s,
+                           descripcion   = %s
+                     WHERE id_acta       = %s;
                 """, [
                     nuevo_estado,
                     observacion or f"Estado actualizado a '{nuevo_estado}' por el Tribunal de Disciplina.",
                     id_acta
                 ])
 
-                # ✅ Si se APRUEBA, recalcular posiciones
+                # ============================================================
+                # ✅ Si se APRUEBA, recalcular posiciones y (opcionalmente) crear sanción
+                # ============================================================
                 if nuevo_estado == "Aprobada":
+                    # Obtenemos torneo y datos del partido para recalcular tabla
                     cursor.execute("""
-                        SELECT id_torneo
-                        FROM acta_partido
-                        WHERE id_acta = %s
-                        LIMIT 1;
+                        SELECT 
+                            a.id_torneo,
+                            p.id_serie,
+                            p.id_club_local,
+                            p.id_club_visitante
+                        FROM acta_partido a
+                        JOIN partidos p ON p.id_partido = a.id_partido
+                       WHERE a.id_acta = %s
+                       LIMIT 1;
                     """, [id_acta])
                     row = cursor.fetchone()
-                    torneo_id = row[0] if row and row[0] else _get_default_torneo_id()
 
+                    torneo_id      = None
+                    id_serie       = None
+                    id_club_local  = None
+                    id_club_visita = None
+
+                    if row:
+                        torneo_id, id_serie, id_club_local, id_club_visita = row
+                    else:
+                        torneo_id = _get_default_torneo_id()
+
+                    # Recalcular tabla de posiciones si tenemos torneo
                     if torneo_id:
                         _recalcular_tabla_torneo(torneo_id)
 
-                # ❌ Si se RECHAZA, devolverla al árbitro
+                    # --------------------------------------------------------
+                    # 🟥 Crear sanción SOLO si el Tribunal ingresó datos
+                    # --------------------------------------------------------
+                    # Consideramos "hay sanción" si al menos escribió tipo o motivo,
+                    # o indicó jugador/club.
+                    hay_datos_sancion = any([
+                        tipo_sancion,
+                        motivo_sancion_f,
+                        id_jugador is not None,
+                        id_club is not None,
+                    ])
+
+                    if id_serie and hay_datos_sancion:
+                        # Fallbacks por si no completan todo
+                        tipo_final = tipo_sancion or "Sanción Tribunal"
+                        motivo_final = (
+                            motivo_sancion_f
+                            or observacion
+                            or f"Sanción dictada por el Tribunal al aprobar el acta #{id_acta}."
+                        )
+
+                        # Si no especificaron club, usamos por defecto el local (puedes cambiar a visita)
+                        if id_club is None:
+                            id_club = id_club_local
+
+                        # 👇 Ajusta este INSERT a la estructura real de tu tabla `sanciones`
+                        cursor.execute("""
+                            INSERT INTO sanciones (
+                                id_jugador,
+                                id_serie,
+                                id_club,
+                                tipo,
+                                motivo,
+                                fecha_inc
+                            )
+                            VALUES (%s, %s, %s, %s, %s, CURRENT_DATE);
+                        """, [
+                            id_jugador,   # puede ser None si no se indica jugador específico
+                            id_serie,
+                            id_club,
+                            tipo_final,
+                            motivo_final,
+                        ])
+
+                # ❌ Si se RECHAZA, devolverla al árbitro (sin sanción)
                 elif nuevo_estado == "Rechazada":
                     cursor.execute("""
                         UPDATE acta_partido
-                        SET fecha_devolucion = NOW(),
-                            observacion_tribunal = %s
-                        WHERE id_acta = %s;
+                           SET fecha_devolucion     = NOW(),
+                               observacion_tribunal = %s
+                         WHERE id_acta             = %s;
                     """, [
                         observacion or "El tribunal ha rechazado el acta. Debe ser corregida y reenviada por el árbitro.",
                         id_acta
@@ -2346,16 +2636,14 @@ def panel_tribunal(request):
             request.session["mensaje_acta"] = f"✅ Acta #{id_acta} actualizada a '{nuevo_estado}'."
             return redirect("panel_tribunal")
 
-
     # ============================================================
     # 🔹 Mensaje de bienvenida (solo visible en panel)
     # ============================================================
     mensaje_bienvenida = None
     if not request.session.get("bienvenida_mostrada", False):
         mensaje_bienvenida = f"Bienvenido {user_nombre}"
-        request.session["bienvenida_mostrada"] = True  # Se mostrará solo una vez
+        request.session["bienvenida_mostrada"] = True
 
-    # 🔹 Mostrar mensajes del panel (no en login)
     mensaje = request.session.pop("mensaje_acta", None)
 
     # ============================================================
@@ -2365,39 +2653,42 @@ def panel_tribunal(request):
         # Actas pendientes o en revisión
         cursor.execute("""
             SELECT 
-                a.id_acta, p.club_local, p.club_visitante, p.fecha,
+                a.id_acta,
+                p.club_local,
+                p.club_visitante,
+                p.fecha,
                 COALESCE(a.incidentes, 'Sin incidentes reportados'),
                 COALESCE(ea.nombre_estado, 'Pendiente')
             FROM acta_partido a
-            JOIN partidos p ON a.id_partido = p.id_partido
+            JOIN partidos p   ON a.id_partido = p.id_partido
             JOIN estado_acta ea ON ea.id_acta = a.id_acta
-            WHERE ea.nombre_estado IN ('Pendiente', 'En revisión')
-            ORDER BY p.fecha DESC;
+           WHERE ea.nombre_estado IN ('Pendiente', 'En revisión')
+           ORDER BY p.fecha DESC;
         """)
         actas_recibidas = cursor.fetchall()
 
         # Actas revisadas
         cursor.execute("""
             SELECT 
-                a.id_acta, p.club_local, p.club_visitante, p.fecha,
+                a.id_acta,
+                p.club_local,
+                p.club_visitante,
+                p.fecha,
                 COALESCE(a.incidentes, 'Sin incidentes reportados'),
                 COALESCE(ea.nombre_estado, 'Pendiente')
             FROM acta_partido a
-            JOIN partidos p ON a.id_partido = p.id_partido
+            JOIN partidos p   ON a.id_partido = p.id_partido
             JOIN estado_acta ea ON ea.id_acta = a.id_acta
-            WHERE ea.nombre_estado IN ('Aprobada', 'Rechazada')
-            ORDER BY p.fecha DESC;
+           WHERE ea.nombre_estado IN ('Aprobada', 'Rechazada')
+           ORDER BY p.fecha DESC;
         """)
         actas_revisadas = cursor.fetchall()
 
-    # ============================================================
-    # 🔹 Contexto
-    # ============================================================
     contexto = {
-        "user_nombre": user_nombre,
-        "actas_recibidas": actas_recibidas,
-        "actas_revisadas": actas_revisadas,
-        "mensaje": mensaje,
+        "user_nombre":        user_nombre,
+        "actas_recibidas":    actas_recibidas,
+        "actas_revisadas":    actas_revisadas,
+        "mensaje":            mensaje,
         "mensaje_bienvenida": mensaje_bienvenida,
     }
 
@@ -2593,13 +2884,9 @@ def actas_arbitro(request):
 def redactar_acta(request, id_partido):
     estado_actual = None  # ✅ Evita UnboundLocalError si no hay acta existente
 
-    """
-    Permite al árbitro redactar el acta de un partido finalizado.
-    Ahora también muestra la nómina enviada por el turno (nombre + camiseta).
-    """
     rut, dv = _parse_rut_from_session(request)
 
-    # 🔹 Obtener datos del partido asignado (incluye id_club_local / id_club_visitante)
+    # 🔹 Obtener datos del partido asignado
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT 
@@ -2632,7 +2919,6 @@ def redactar_acta(request, id_partido):
 
     id_club_local = partido[7]
     id_club_visita = partido[8]
-    
 
     # 🔹 Verificar si ya existe un acta para este partido
     with connection.cursor() as cursor:
@@ -2652,7 +2938,6 @@ def redactar_acta(request, id_partido):
     if acta_existente:
         id_acta_existente, estado_actual = acta_existente
 
-        # --- Si el acta está en estos estados, no se puede editar ---
         if estado_actual in ["Pendiente", "En revisión", "Aprobada"]:
             messages.warning(
                 request,
@@ -2660,29 +2945,22 @@ def redactar_acta(request, id_partido):
             )
             return redirect("actas_arbitro")
 
-        # --- Si fue rechazada, sí se puede editar ---
         elif estado_actual == "Rechazada":
             messages.info(
                 request,
                 "✏️ Este acta fue devuelta por el Tribunal. Puedes editarla y reenviarla."
             )
 
-        # --- Si fue devuelta en revisión, también puede editar ---
         elif estado_actual == "Revisión solicitada":
             messages.info(
                 request,
                 "✏️ El tribunal devolvió esta acta para corrección. "
                 "Puedes editarla y volver a enviarla."
             )
-
     else:
-        # ✅ Si no hay acta previa, mantenemos la variable definida
         estado_actual = None
 
-
-            
-
-    # 🔹 Cargar NÓMINA del partido (jugador_partido) y separarla en Local / Visita
+    # 🔹 Cargar NÓMINA del partido
     nomina_local = []
     nomina_visita = []
 
@@ -2702,18 +2980,12 @@ def redactar_acta(request, id_partido):
         filas = cursor.fetchall()
 
     for id_club, camiseta, nombre in filas:
-        jugador = {
-            "camiseta": camiseta,
-            "nombre": nombre or "",
-        }
+        jugador = {"camiseta": camiseta, "nombre": nombre or ""}
         if id_club_local and id_club == id_club_local:
             nomina_local.append(jugador)
         elif id_club_visita and id_club == id_club_visita:
             nomina_visita.append(jugador)
-        else:
-            # Si por algún motivo no calza el club, lo ignoramos o lo podrías loguear.
-            pass
-        
+
     # 🔹 Procesar formulario (POST)
     if request.method == "POST":
         goles_local = request.POST.get("goles_local")
@@ -2722,7 +2994,6 @@ def redactar_acta(request, id_partido):
         tarjetas_amarillas = request.POST.get("tarjetas_amarillas") or None
         tarjetas_rojas = request.POST.get("tarjetas_rojas") or None
 
-        # Validación básica
         if goles_local == "" or goles_visita == "":
             messages.warning(request, "⚠️ Debes ingresar los goles de ambos equipos.")
             return redirect(request.path)
@@ -2757,23 +3028,24 @@ def redactar_acta(request, id_partido):
                         partido[3], id_acta
                     ])
 
-                    # 3️⃣ Actualizar el estado (Pendiente de revisión)
-                    cursor.execute("""
-                        UPDATE estado_acta
-                        SET id_estado = (
-                            SELECT id_estado FROM estado
-                            WHERE LOWER(nombre_estado) = LOWER('Pendiente')
-                            LIMIT 1
-                        )
-                        WHERE id_acta = %s;
-                    """, [id_acta])
-                    
-                    # ✅ Crear estado inicial si no existe (nuevo bloque)
+                    # 3️⃣ Crear o actualizar el estado del acta a "Pendiente"
                     cursor.execute("""
                         SELECT COUNT(*) FROM estado_acta WHERE id_acta = %s;
                     """, [id_acta])
                     exists = cursor.fetchone()[0]
-                    if not exists:
+
+                    if exists:
+                        cursor.execute("""
+                            UPDATE estado_acta
+                               SET nombre_estado = %s,
+                                   descripcion   = %s
+                             WHERE id_acta = %s;
+                        """, [
+                            "Pendiente",
+                            "Acta enviada por el árbitro, pendiente de revisión por el Tribunal.",
+                            id_acta
+                        ])
+                    else:
                         cursor.execute("""
                             INSERT INTO estado_acta (id_acta, nombre_estado, descripcion)
                             VALUES (%s, %s, %s);
@@ -2790,7 +3062,7 @@ def redactar_acta(request, id_partido):
                     )
 
                 else:
-                    # ⚠️ Si por alguna razón no existe (caso antiguo), se crea una nueva
+                    # ⚠️ Si no existe acta previa, se crea una nueva
                     cursor.execute("""
                         INSERT INTO acta_partido (
                             id_partido, rut, digitov, fecha_encuentro,
@@ -2806,15 +3078,15 @@ def redactar_acta(request, id_partido):
                     ])
                     id_acta = cursor.fetchone()[0]
 
+                    # Estado inicial "Pendiente"
                     cursor.execute("""
-                        INSERT INTO estado_acta (id_acta, id_estado)
-                        VALUES (
-                            %s,
-                            (SELECT id_estado FROM estado 
-                            WHERE LOWER(nombre_estado) = LOWER('Pendiente')
-                            LIMIT 1)
-                        );
-                    """, [id_acta])
+                        INSERT INTO estado_acta (id_acta, nombre_estado, descripcion)
+                        VALUES (%s, %s, %s);
+                    """, [
+                        id_acta,
+                        "Pendiente",
+                        "Acta enviada por el árbitro, pendiente de revisión por el Tribunal."
+                    ])
 
                     print(f"ℹ️ Acta creada manualmente por el árbitro (id={id_acta}).")
                     messages.success(request, "✅ Acta creada y enviada al Tribunal.")
@@ -3188,51 +3460,19 @@ def portal_home(request):
             "etiqueta": etiqueta,
         })
 
-    # =========================
-    # 2) Cargar sanciones del Tribunal (panel lateral)
-    # =========================
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                s.id_sancion,
-                s.fecha_inc,
-                COALESCE(s.tipo,'')   AS tipo,
-                COALESCE(s.motivo,'') AS motivo,
-                COALESCE(j.nombre,'')   AS nom_jug,
-                COALESCE(j.apellido,'') AS ape_jug,
-                COALESCE(c.nombre,'')   AS nom_club
-            FROM sanciones s
-            LEFT JOIN jugadores j ON j.rut_jugador = s.id_jugador
-            LEFT JOIN club c      ON c.id_club     = s.id_club
-         ORDER BY s.fecha_inc DESC NULLS LAST,
-                  s.id_sancion DESC
-            LIMIT 10
-        """)
-        sanciones = []
-        for row in cursor.fetchall():
-            sid, fecha_inc, tipo, motivo, nom_jug, ape_jug, nom_club = row
-            sanciones.append({
-                "id_sancion": sid,
-                "fecha_inc": fecha_inc,
-                "tipo": tipo,
-                "motivo": motivo,
-                "jugador": (nom_jug + " " + ape_jug).strip(),
-                "club": nom_club,
-            })
-
-    # Si no hay series -> solo mostramos sanciones
+    # Si no hay series -> solo mostramos vacío
     if not series:
         return render(request, "accounts/home.html", {
             "series": [],
             "serie_sel": None,
             "id_serie": None,
             "posiciones": [],
-            "sanciones": sanciones,
+            "sanciones": [],
             "noticias": [],
         })
 
     # =========================
-    # 3) Elegir serie seleccionada
+    # 2) Elegir serie seleccionada
     # =========================
     if not id_serie or not any(str(s["id"]) == str(id_serie) for s in series):
         id_serie = str(series[0]["id"])
@@ -3243,11 +3483,10 @@ def portal_home(request):
     )
 
     # =========================
-    # 4) Noticias POR SERIE (si existe la tabla)
+    # 3) Noticias POR SERIE (si existe la tabla)
     # =========================
     noticias = []
     with connection.cursor() as cursor:
-        # Verificar si existe la tabla 'noticias' en el esquema public
         cursor.execute("""
             SELECT EXISTS (
                 SELECT 1 
@@ -3281,8 +3520,41 @@ def portal_home(request):
                     "fecha": fecha_pub,
                 })
         else:
-            # Si no existe la tabla, dejamos noticias vacías
             noticias = []
+
+    # =========================
+    # 4) Sanciones del Tribunal FILTRADAS POR SERIE (usando s.id_serie)
+    # =========================
+    sanciones = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                s.id_sancion,
+                s.fecha_inc,
+                COALESCE(s.tipo,'')      AS tipo,
+                COALESCE(s.motivo,'')    AS motivo,
+                COALESCE(j.nombre,'')    AS nom_jug,
+                COALESCE(j.apellido,'')  AS ape_jug,
+                COALESCE(c.nombre,'')    AS nom_club
+            FROM sanciones s
+            LEFT JOIN jugadores j ON j.rut_jugador = s.id_jugador
+            LEFT JOIN club c      ON c.id_club     = s.id_club
+           WHERE s.id_serie = %s
+         ORDER BY s.fecha_inc DESC NULLS LAST,
+                  s.id_sancion DESC
+            LIMIT 10
+        """, [id_serie])
+
+        for row in cursor.fetchall():
+            sid, fecha_inc, tipo, motivo, nom_jug, ape_jug, nom_club = row
+            sanciones.append({
+                "id_sancion": sid,
+                "fecha_inc": fecha_inc,
+                "tipo": tipo,
+                "motivo": motivo,
+                "jugador": (nom_jug + " " + ape_jug).strip(),
+                "club": nom_club,
+            })
 
     # =========================
     # 5) Tabla de posiciones POR SERIE
@@ -3384,6 +3656,8 @@ def portal_home(request):
         "sanciones": sanciones,
         "noticias": noticias,
     })
+
+
 
 def _recalcular_tabla_torneo(id_torneo: int):
     """

@@ -145,34 +145,16 @@
 
   <!-- PANEL DERECHO: NOTICIAS POR SERIE + SANCIONES -->
   <aside class="card">
-    <!-- NOTICIAS POR SERIE -->
-    <h2>📰 Noticias de la serie</h2>
-
-    {% if noticias %}
-      {% if serie_sel %}
-        <p class="muted" style="margin-top:-4px; margin-bottom:6px;">
-          Noticias asociadas a <strong>{{ serie_sel.etiqueta }}</strong>
-        </p>
-      {% endif %}
-      {% for n in noticias %}
-        <div class="news-item">
-          <div class="news-item-title">{{ n.titulo }}</div>
-          <div class="news-meta">
-            {% if n.fecha %}{{ n.fecha|date:"d/m/Y" }}{% endif %}
-          </div>
-          {% if n.resumen %}
-            <div class="muted">{{ n.resumen }}</div>
-          {% endif %}
-        </div>
-      {% endfor %}
-    {% else %}
-      <p class="muted">No hay noticias registradas para esta serie.</p>
-    {% endif %}
-
-    <hr style="border-color:#2b3344; margin:12px 0;">
+    
 
     <!-- SANCIONES DEL TRIBUNAL -->
     <h2>🟥 Sanciones del Tribunal</h2>
+
+    {% if serie_sel %}
+      <p class="muted" style="margin-top:-4px; margin-bottom:6px;">
+        Sanciones asociadas a la serie <strong>{{ serie_sel.etiqueta }}</strong>.
+      </p>
+    {% endif %}
 
     {% if sanciones %}
       {% for s in sanciones %}
@@ -191,7 +173,7 @@
         </div>
       {% endfor %}
     {% else %}
-      <p class="muted">No hay sanciones registradas por el Tribunal.</p>
+      <p class="muted">No hay sanciones registradas para esta serie.</p>
     {% endif %}
   </aside>
 

@@ -71,7 +71,7 @@
     padding:6px 12px;
     font-weight:600;
     cursor:pointer;
-    transition:.2s ease;
+    transition:.2s.ease;
   }
   .btn-primario:hover { background:#8b5cf6; color:#fff; }
 
@@ -102,6 +102,39 @@
   .modal header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
   .modal header h3 { color:#a78bfa; margin:0; }
   .modal-close { background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer; }
+
+  /* Bloque de sanción dentro de la fila */
+  .sancion-toggle {
+    background:none;
+    border:none;
+    color:#facc15;
+    font-size:.8rem;
+    cursor:pointer;
+    padding:4px 6px;
+  }
+  .sancion-box {
+    margin-top:6px;
+    padding:8px;
+    border-radius:8px;
+    background:#020617;
+    border:1px solid #334155;
+    font-size:.8rem;
+  }
+  .sancion-box label {
+    margin-top:4px;
+    margin-bottom:2px;
+    font-size:.8rem;
+  }
+  .sancion-row {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:6px 10px;
+  }
+  .hidden { display:none; }
+
+  @media (max-width: 980px){
+    .wrap{grid-template-columns:1fr;}
+  }
 </style>
 
 <div class="wrap">
@@ -133,19 +166,46 @@
                 </span>
               </td>
               <td>
-                <form method="POST" style="display:flex; gap:6px; align-items:center;">
+                <form method="POST" style="display:flex; flex-direction:column; gap:6px;">
                   {% csrf_token %}
-                  <input type="hidden" name="id_acta" value="{{ a.0 }}">
-                  <select name="estado" style="background:#1e293b; color:#f9fafb; border-radius:6px; padding:5px; font-size:.85rem;">
-                    <option value="Pendiente" {% if a.5 == "Pendiente" %}selected{% endif %}>Pendiente</option>
-                    <option value="En revisión" {% if a.5 == "En revisión" %}selected{% endif %}>En revisión</option>
-                    <option value="Aprobada" {% if a.5 == "Aprobada" %}selected{% endif %}>Aprobada</option>
-                    <option value="Rechazada" {% if a.5 == "Rechazada" %}selected{% endif %}>Rechazada</option>
-                  </select>
-                  <button type="submit" class="btn-icon" title="Guardar estado">💾</button>
-                  <button type="button" class="btn-icon" title="Descargar acta"
-                    onclick="descargarActa('{{ a.0 }}','{{ a.3|date:'Y-m-d' }}','{{ a.1 }}','{{ a.2 }}')">⬇️</button>
-                  <a href="{% url 'ver_acta' a.0 %}" class="btn-icon" title="Ver detalle completo del acta">👁️</a>
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="hidden" name="id_acta" value="{{ a.0 }}">
+                    <select name="estado" style="background:#1e293b; color:#f9fafb; border-radius:6px; padding:5px; font-size:.85rem;">
+                      <option value="Pendiente"  {% if a.5 == "Pendiente" %}selected{% endif %}>Pendiente</option>
+                      <option value="En revisión" {% if a.5 == "En revisión" %}selected{% endif %}>En revisión</option>
+                      <option value="Aprobada"  {% if a.5 == "Aprobada" %}selected{% endif %}>Aprobada</option>
+                      <option value="Rechazada" {% if a.5 == "Rechazada" %}selected{% endif %}>Rechazada</option>
+                    </select>
+                    <button type="submit" class="btn-icon" title="Guardar estado">💾</button>
+                    <button type="button" class="btn-icon" title="Descargar acta"
+                      onclick="descargarActa('{{ a.0 }}','{{ a.3|date:'Y-m-d' }}','{{ a.1 }}','{{ a.2 }}')">⬇️</button>
+                    <a href="{% url 'ver_acta' a.0 %}" class="btn-icon" title="Ver detalle completo del acta">👁️</a>
+
+                    <!-- toggle sanción -->
+                    <button type="button" class="sancion-toggle"
+                            onclick="toggleSancion('{{ a.0 }}')">
+                      ⚖️ Sanción
+                    </button>
+                  </div>
+
+                  <!-- Bloque SANCIÓN (opcional) -->
+                  <div id="sancion-{{ a.0 }}" class="sancion-box hidden">
+                    <div class="sancion-row">
+                      <div>
+                        <label for="id_jugador_{{ a.0 }}">ID Jugador (opcional)</label>
+                        <input id="id_jugador_{{ a.0 }}" type="text" name="id_jugador" placeholder="Ej: RUT numérico o ID interno">
+                      </div>
+                      <div>
+                        <label for="id_club_{{ a.0 }}">ID Club (opcional)</label>
+                        <input id="id_club_{{ a.0 }}" type="text" name="id_club" placeholder="ID del club sancionado">
+                      </div>
+                    </div>
+                    <label for="tipo_sancion_{{ a.0 }}">Tipo sanción</label>
+                    <input id="tipo_sancion_{{ a.0 }}" type="text" name="tipo_sancion" placeholder="Ej: Suspensión 1 fecha, Multa, Advertencia…">
+                    <label for="motivo_sancion_{{ a.0 }}">Motivo</label>
+                    <textarea id="motivo_sancion_{{ a.0 }}" name="motivo_sancion" rows="2"
+                              placeholder="Detalle de la sanción según el acta y la evaluación del Tribunal…"></textarea>
+                  </div>
                 </form>
               </td>
             </tr>
@@ -176,18 +236,45 @@
                 <span class="badge {% if a.5 == 'Aprobada' %}aprobada{% else %}rechazada{% endif %}">{{ a.5 }}</span>
               </td>
               <td>
-                <form method="POST" style="display:flex; gap:6px;">
+                <form method="POST" style="display:flex; flex-direction:column; gap:6px;">
                   {% csrf_token %}
-                  <input type="hidden" name="id_acta" value="{{ a.0 }}">
-                  <select name="estado" style="background:#1e293b; color:#f9fafb; border-radius:6px; padding:5px; font-size:.85rem;">
-                    <option value="Aprobada" {% if a.5 == "Aprobada" %}selected{% endif %}>Aprobada</option>
-                    <option value="Rechazada" {% if a.5 == "Rechazada" %}selected{% endif %}>Rechazada</option>
-                    <option value="En revisión">En revisión</option>
-                  </select>
-                  <button type="submit" class="btn-icon" title="Guardar estado">💾</button>
-                  <button type="button" class="btn-icon" title="Descargar acta"
-                    onclick="descargarActa('{{ a.0 }}','{{ a.3|date:'Y-m-d' }}','{{ a.1 }}','{{ a.2 }}')">⬇️</button>
-                  <a href="{% url 'ver_acta' a.0 %}" class="btn-icon" title="Ver detalle completo del acta">👁️</a>
+                  <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="hidden" name="id_acta" value="{{ a.0 }}">
+                    <select name="estado" style="background:#1e293b; color:#f9fafb; border-radius:6px; padding:5px; font-size:.85rem;">
+                      <option value="Aprobada"  {% if a.5 == "Aprobada" %}selected{% endif %}>Aprobada</option>
+                      <option value="Rechazada" {% if a.5 == "Rechazada" %}selected{% endif %}>Rechazada</option>
+                      <option value="En revisión">En revisión</option>
+                    </select>
+                    <button type="submit" class="btn-icon" title="Guardar estado">💾</button>
+                    <button type="button" class="btn-icon" title="Descargar acta"
+                      onclick="descargarActa('{{ a.0 }}','{{ a.3|date:'Y-m-d' }}','{{ a.1 }}','{{ a.2 }}')">⬇️</button>
+                    <a href="{% url 'ver_acta' a.0 %}" class="btn-icon" title="Ver detalle completo del acta">👁️</a>
+
+                    <!-- toggle sanción -->
+                    <button type="button" class="sancion-toggle"
+                            onclick="toggleSancion('{{ a.0 }}')">
+                      ⚖️ Sanción
+                    </button>
+                  </div>
+
+                  <!-- Bloque SANCIÓN (opcional) -->
+                  <div id="sancion-{{ a.0 }}" class="sancion-box hidden">
+                    <div class="sancion-row">
+                      <div>
+                        <label for="id_jugador_r{{ a.0 }}">ID Jugador (opcional)</label>
+                        <input id="id_jugador_r{{ a.0 }}" type="text" name="id_jugador" placeholder="Ej: RUT numérico o ID interno">
+                      </div>
+                      <div>
+                        <label for="id_club_r{{ a.0 }}">ID Club (opcional)</label>
+                        <input id="id_club_r{{ a.0 }}" type="text" name="id_club" placeholder="ID del club sancionado">
+                      </div>
+                    </div>
+                    <label for="tipo_sancion_r{{ a.0 }}">Tipo sanción</label>
+                    <input id="tipo_sancion_r{{ a.0 }}" type="text" name="tipo_sancion" placeholder="Ej: Suspensión 1 fecha, Multa, Advertencia…">
+                    <label for="motivo_sancion_r{{ a.0 }}">Motivo</label>
+                    <textarea id="motivo_sancion_r{{ a.0 }}" name="motivo_sancion" rows="2"
+                              placeholder="Detalle de la sanción según el acta y la evaluación del Tribunal…"></textarea>
+                  </div>
                 </form>
               </td>
             </tr>
@@ -202,7 +289,12 @@
     <!-- SANCIONES -->
     <div class="card">
       <h2>⚠️ Sanciones</h2>
-      <p class="muted">Integración pendiente con la tabla <em>sanciones</em>.</p>
+      <p class="muted">
+        Para registrar una sanción asociada a un acta, selecciona
+        <strong>Aprobada</strong> y presiona el botón <strong>⚖️ Sanción</strong>
+        en la fila del partido. La información quedará ligada a la serie del encuentro
+        y se mostrará en el inicio (home) por serie.
+      </p>
     </div>
 
     <!-- AUDIENCIAS -->
@@ -266,6 +358,17 @@ setTimeout(() => {
   const msg = document.getElementById('msgPanel');
   if (msg) msg.style.opacity = '0';
 }, 3000);
+
+// Toggle del bloque de sanción
+function toggleSancion(idActa) {
+  const box = document.getElementById('sancion-' + idActa);
+  if (!box) return;
+  if (box.classList.contains('hidden')) {
+    box.classList.remove('hidden');
+  } else {
+    box.classList.add('hidden');
+  }
+}
 </script>
 
 {% endblock %}
